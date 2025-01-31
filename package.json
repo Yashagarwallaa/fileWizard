@@ -1,0 +1,20 @@
+{
+  "name": "fw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ilovepdf/ilovepdf-nodejs": "^0.3.0",
+    "docx": "^9.1.1",
+    "dotenv": "^16.4.7",
+    "ilovepdf-sdk": "^0.0.5",
+    "libreoffice-convert": "^1.6.0",
+    "pdf-lib": "^1.17.1",
+    "request": "^2.88.2"
+  }
+}
