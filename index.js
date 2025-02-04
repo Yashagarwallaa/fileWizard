@@ -1,76 +1,81 @@
-const dotenv = require('dotenv');
-dotenv.config();
-var request = require('request'),
-    fs = require('fs'),
-    apiKey = process.env.APIKEY;
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+// const dotenv = require('dotenv');
+const {convertFile} = require('./controllers/converFile.js')
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+apiKey = process.env.APIKEY;
+const app = express();
+app.use(cors());
+app.use(bodyParser.urlencoded({ extended: false }));
 
-    formData = {
-        target_format: 'docx',
-        source_file: fs.createReadStream('./file.pdf')
-    };
-const localFilename = './hello.docx';
+app.use(bodyParser.json());
 
-function startConversionJob(formData){
-return new Promise((resolve,reject)=>{
-request.post({url:'https://sandbox.zamzar.com/v1/jobs/', formData: formData}, function (err, response, body) {
-    if (err) {
-        reject('Unable to start conversion job', err);
-    } else {
-        console.log('SUCCESS! Conversion job started:', JSON.parse(body));
-        resolve(JSON.parse(body).id);
+const PORT = process.env.PORT || 8000;
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, 'uploads/') // files will be saved in uploads folder
+    },
+    filename: function (req, file, cb) {
+      cb(null, Date.now() + path.extname(file.originalname)) // Add timestamp to filename
     }
-}).auth(apiKey, '', true);
-});
-}
+  });
 
+const upload = multer({ storage: storage });
 
-function ZamzarGotJoborNot(jobID){
-return new Promise((resolve,reject)=>{
-request.get ('https://sandbox.zamzar.com/v1/jobs/' + jobID, function (err, response, body) {
-    if (err) {
-        reject('Unable to get job', err);
-    } else {
-        console.log('SUCCESS! Got job:', JSON.parse(body));
-        resolve(JSON.parse(body).target_files[0].id);
-    }
-}).auth(apiKey, '', true);
-})
-}
-   
-function downloadFile(fileID){
-return new Promise((resolve,reject) => 
-{
-request.get({url: 'https://sandbox.zamzar.com/v1/files/' + fileID + '/content', followRedirect: false}, function (err, response, body) {
-    if (err) {
-        reject('Unable to download file:', err);
-    } else {
-        // We are being redirected
-        if (response.headers.location) {
-            // Issue a second request to download the file
-            var fileRequest = request(response.headers.location);
-            fileRequest.on('response', function (res) {
-                res.pipe(fs.createWriteStream(localFilename));
-            });
-            fileRequest.on('end', function () {
-                console.log('File download complete');
-                resolve();
-            });
-        }
-    }
-}).auth(apiKey,'',true).pipe(fs.createWriteStream(localFilename));
-});
+let formData = {
+    target_format: 'pdf',
+    source_file: ''
 };
-
-async function convertFile(){
+let x='';
+app.post('/upload',upload.single('file'),async (req,res)=>{
     try{
-    const jobID = await startConversionJob(formData);
-    await new Promise((res)=>{setTimeout(res,10000)});
-    const fileID = await ZamzarGotJoborNot(jobID);
-    await downloadFile(fileID);
-    console.log("Conversion Done Successfully!!");
-    }catch(err){
-        console.log(err);
-    }
-}
+      if(!req.file){
+        return res.status(400).send('No file uploaded');
+      }
+     x = req.file.filename;
+     const message = req.body.command;
+     let y='';
+     for( let i=0;i<x.length;i++){
+        if(x[i]=='.')break;
+        y+=x[i];
+     }
+   
+     formData.source_file = fs.createReadStream(`./uploads/${x}`);
+const localFilename = `./converted/${y}.${formData.target_format}`
 
-convertFile();
+await convertFile(formData,localFilename);
+
+
+console.log(`File converted to ${formData.target_format} format`);
+
+res.json({
+    message : `File converted to ${formData.target_format} format`,
+    filename: `${y}.${formData.target_format}`
+})
+ 
+    }catch(err){
+       res.status(500).send(err);
+    }
+})
+
+app.get('/converted/:filename',(req,res)=>{
+     const fileName = req.params.filename;
+     const filePath = path.join(__dirname,'converted',fileName);
+     res.download(filePath,(err)=>{
+        if(err){
+            res.status(500).json({
+                message:'Could not download file'
+            })
+        }
+     })
+})
+
+app.listen(PORT,(req,res)=>{
+    console.log(`Server running on PORT ${PORT}`);
+})
+
+
