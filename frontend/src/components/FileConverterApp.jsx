@@ -1,45 +1,77 @@
-import React, { useState } from 'react';
-import { Upload, Send, FileText } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, Send, FileText, Bot } from 'lucide-react';
 import axios from 'axios';
+
 
 const FileConverterApp = () => {
   const [command, setCommand] = useState('');
   const [file, setFile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [originalFilename, setOriginalFilename] = useState(null);
+  const messagesEndRef = useRef(null);
 
-  const handleSubmit = async () => {
-    if (!file || !command) return;
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSubmit = async (isFollowUp = false) => {
+    if ((!file && !isFollowUp) || !command) return;
+    
+    const currentCommand = command;
+    setCommand('');
     setIsLoading(true);
+    
     const newUserMessage = {
       type: 'user',
-      text: `${command}`,
+      text: currentCommand,
     };
     setMessages(prev => [...prev, newUserMessage]);
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('command', command);
+      if (!isFollowUp) {
+        formData.append('file', file);
+        setOriginalFilename(file.name);
+      } else {
+        formData.append('file', file);
+      }
+      formData.append('command', currentCommand);
+      formData.append('isFollowUp', isFollowUp);
 
-      const res = await axios.post(`http://localhost:8080/upload`, formData, {
+      const res = await axios.post(`http://localhost:8080/process`, formData, {
         headers: {
           'Content-type': 'multipart/form-data'
         },
-  
       });
-      console.log(res.data.filename);
-      const serverMessage = {
-        type: 'server',
-        text: res.data.message || 'File converted successfully!',
-        fileName:res.data.filename
-      };
-      setMessages(prev => [...prev, serverMessage]);
+
+      if (res.data.needsClarification) {
+        const clarificationMessage = {
+          type: 'bot',
+          text: res.data.message
+        };
+        setMessages(prev => [...prev, clarificationMessage]);
+      } else {
+        const serverMessage = {
+          type: 'bot',
+          text: `${res.data.message}`,
+          fileName: res.data.filename
+        };
+        setMessages(prev => [...prev, serverMessage]);
+        setFile(null);
+        setOriginalFilename(null);
+      }
+      
     } catch (err) {
       const errorMessage = {
-        type: 'server',
-        text: err.response?.data?.message || 'File conversion failed. Please try again.',
+        type: 'bot',
+        text: err.response?.data?.error || 
+              err.response?.data?.details || 
+              'I encountered an error processing your request. Please try again.',
         error: true
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -50,165 +82,283 @@ const FileConverterApp = () => {
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
-    setFile(selectedFile);
     if (selectedFile) {
+      setFile(selectedFile);
       const fileMessage = {
-        type: 'user',
-        text: `Selected file: ${selectedFile.name}`
+        type: 'bot',
+        text: `Great! You've uploaded "${selectedFile.name}". How would you like me to convert it?`
       };
       setMessages(prev => [...prev, fileMessage]);
     }
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(!!originalFilename);
+    }
+  };
+
   return (
-    <div style={{
-      fontFamily: 'Inter, sans-serif',
-      maxWidth: '600px',
-      margin: '0 auto',
-      height: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      backgroundColor: '#f4f4f7',
-      borderRadius: '12px',
-      boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-    }}>
-      {/* Chat Header */}
-      <div style={{
-        backgroundColor: '#171717',
-        color: 'white',
-        padding: '15px',
-        textAlign: 'center',
-        borderTopLeftRadius: '12px',
-        borderTopRightRadius: '12px'
-      }}>
-        <h2 style={{ margin: 0, fontWeight: '600' }}>File Wizard</h2>
+    <div className="converter-container" style={styles.container}>
+      {/* Header */}
+      <div style={styles.header}>
+        <Bot size={24} color="white" />
+        <div>
+          <h2 style={styles.headerTitle}>File Conversion Assistant</h2>
+          <p style={styles.headerSubtitle}>Powered by Gemini AI</p>
+        </div>
       </div>
 
-      {/* Message Area */}
-      <div style={{
-        flexGrow: 1,
-        overflowY: 'auto',
-        padding: '20px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px'
-      }}>
-        {messages.map((msg, index) => (
-          <div 
-            key={index} 
-            style={{
-              alignSelf: msg.type === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '80%',
-              padding: '10px 15px',
-              borderRadius: '12px',
-              backgroundColor: msg.type === 'user' 
-                ? (msg.error ? '#FFE5E5' : '#e5e5ea')
-                : (msg.error ? '#FFE5E5' : '#ffffff'),
-              color: msg.error ? '#d8000c' : 'black',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-            }}
+      {/* Messages Area */}
+      <div style={styles.messagesArea}>
+        {messages.length === 0 ? (
+          <WelcomeMessage />
+        ) : (
+          messages.map((msg, index) => (
+            <MessageBubble key={index} message={msg} />
+          ))
+        )}
+        
+        {isLoading && (
+          <div style={styles.loadingBubble}>
+            <div style={styles.loadingContent}>
+              <Bot size={16} />
+              <span>Thinking...</span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <div style={styles.inputArea}>
+        {!originalFilename && (
+          <>
+            <input 
+              type="file"
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+              id="file-upload"
+            />
+            <label 
+              htmlFor="file-upload" 
+              style={styles.uploadButton}
+            >
+              <Upload size={24} color={file ? '#00a67e' : '#666'} />
+            </label>
+          </>
+        )}
+        
+        <input 
+          type="text"
+          value={command}
+          onChange={(e) => setCommand(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder={file ? "How would you like to convert your file?" : "Upload a file to get started..."}
+          style={styles.textInput}
+        />
+        
+        <button 
+          onClick={() => handleSubmit(!!originalFilename)}
+          disabled={(!file && !originalFilename) || !command || isLoading}
+          style={{
+            ...styles.sendButton,
+            backgroundColor: ((!file && !originalFilename) || !command || isLoading) ? '#cccccc' : '#171717',
+            cursor: ((!file && !originalFilename) || !command || isLoading) ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <Send size={20} color="white" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// components/MessageBubble.js
+const MessageBubble = ({ message }) => {
+  return (
+    <div style={{
+      ...styles.messageBubble,
+      alignSelf: message.type === 'user' ? 'flex-end' : 'flex-start',
+      backgroundColor: message.type === 'user' 
+        ? '#171717'
+        : (message.error ? '#FFE5E5' : '#ffffff'),
+      color: message.type === 'user' ? 'white' : (message.error ? '#d8000c' : 'black'),
+    }}>
+      {message.type === 'bot' && (
+        <div style={styles.botIdentifier}>
+          <Bot size={16} />
+          <span>Assistant</span>
+        </div>
+      )}
+      
+      {message.text}
+      
+      {message.fileName && (
+        <div style={styles.downloadButton}>
+          <FileText size={20} style={{ marginRight: '10px' }} />
+          <a 
+            href={`http://localhost:8080/download/${message.fileName}`}
+            style={styles.downloadLink}
           >
-            {msg.text}
-            
-            {msg.fileName && (
-  <div style={{
+            Download Converted File
+          </a>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// components/WelcomeMessage.js
+const WelcomeMessage = () => {
+  return (
+    <div style={styles.welcomeMessage}>
+      <div style={styles.welcomeHeader}>
+        <Bot size={20} />
+        <span style={{ fontWeight: '500' }}>File Conversion Assistant</span>
+      </div>
+      <p style={{ margin: '0 0 10px' }}>
+        Hi! I'm your file conversion assistant. Upload a file and tell me how you'd like to convert it.
+      </p>
+      <p style={{ margin: '0 0 5px' }}>I support converting to:</p>
+      <ul style={{ margin: '0', paddingLeft: '20px' }}>
+        <li>PDF documents</li>
+        <li>PNG images</li>
+        <li>JPG/JPEG images</li>
+        <li>Word documents (DOCX)</li>
+      </ul>
+    </div>
+  );
+};
+
+// Styles object
+const styles = {
+  container: {
+    fontFamily: 'Inter, sans-serif',
+    maxWidth: '600px',
+    margin: '0 auto',
+    height: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    backgroundColor: '#f4f4f7',
+    borderRadius: '12px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    overflow: 'hidden'
+  },
+  header: {
+    backgroundColor: '#171717',
+    color: 'white',
+    padding: '15px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px'
+  },
+  headerTitle: {
+    margin: 0,
+    fontWeight: '600'
+  },
+  headerSubtitle: {
+    margin: '5px 0 0',
+    fontSize: '0.9em',
+    opacity: 0.8
+  },
+  messagesArea: {
+    flexGrow: 1,
+    overflowY: 'auto',
+    padding: '20px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px'
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    padding: '12px 15px',
+    borderRadius: '12px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  botIdentifier: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '5px',
+    color: '#666',
+    fontSize: '0.9em'
+  },
+  downloadButton: {
     display: 'flex',
     alignItems: 'center',
     marginTop: '10px',
     backgroundColor: '#f0f0f0',
     padding: '8px',
     borderRadius: '8px'
-  }}>
-    <FileText size={20} style={{ marginRight: '10px' }} />
-    <a 
-      href={`http://localhost:8080/converted/${msg.fileName}`}  // Updated href
-      style={{ 
-        color: '#333', 
-        textDecoration: 'none',
-        fontWeight: '500'
-      }}
-    >
-      Download Converted File
-    </a>
-  </div>
-            )}
-          </div>
-        ))}
-        {isLoading && (
-          <div style={{
-            alignSelf: 'flex-start',
-            padding: '10px 15px',
-            backgroundColor: '#ffffff',
-            borderRadius: '12px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-          }}>
-            Processing your request...
-          </div>
-        )}
-      </div>
-
-      {/* Input Area */}
-      <div style={{
-        display: 'flex',
-        padding: '15px',
-        backgroundColor: 'white',
-        borderBottomLeftRadius: '12px',
-        borderBottomRightRadius: '12px',
-        gap: '10px',
-        alignItems: 'center'
-      }}>
-        <input 
-          type="file"
-          onChange={handleFileChange}
-          style={{ display: 'none' }}
-          id="file-upload"
-        />
-        <label 
-          htmlFor="file-upload" 
-          style={{
-            cursor: 'pointer',
-            backgroundColor: '#f0f0f0',
-            padding: '10px',
-            borderRadius: '8px'
-          }}
-        >
-          <Upload size={24} />
-        </label>
-        
-        <input 
-          type="text"
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          placeholder="Enter conversion command (e.g., convert to pdf)"
-          style={{
-            flexGrow: 1,
-            padding: '10px',
-            borderRadius: '8px',
-            border: '1px solid #e0e0e0',
-            outline: 'none'
-          }}
-        />
-        
-        <button 
-          onClick={handleSubmit}
-          disabled={!file || !command || isLoading}
-          style={{
-            backgroundColor: (!file || !command || isLoading) ? '#cccccc' : '#171717',
-            color: 'white',
-            border: 'none',
-            padding: '10px 15px',
-            borderRadius: '8px',
-            cursor: (!file || !command || isLoading) ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px'
-          }}
-        >
-          <Send size={20} /> Send
-        </button>
-      </div>
-    </div>
-  );
+  },
+  downloadLink: {
+    color: '#333',
+    textDecoration: 'none',
+    fontWeight: '500'
+  },
+  loadingBubble: {
+    alignSelf: 'flex-start',
+    padding: '12px 15px',
+    backgroundColor: '#ffffff',
+    borderRadius: '12px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  loadingContent: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: '#666'
+  },
+  inputArea: {
+    display: 'flex',
+    padding: '15px',
+    backgroundColor: 'white',
+    gap: '10px',
+    alignItems: 'center',
+    borderTop: '1px solid #e0e0e0'
+  },
+  uploadButton: {
+    cursor: 'pointer',
+    backgroundColor: '#f0f0f0',
+    padding: '10px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center'
+  },
+  textInput: {
+    flexGrow: 1,
+    padding: '10px',
+    borderRadius: '8px',
+    border: '1px solid #e0e0e0',
+    outline: 'none',
+    fontSize: '15px'
+  },
+  sendButton: {
+    border: 'none',
+    padding: '10px 15px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    transition: 'all 0.2s ease'
+  },
+  welcomeMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+    padding: '15px',
+    borderRadius: '12px',
+    maxWidth: '80%',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  welcomeHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '10px'
+  }
 };
 
 export default FileConverterApp;
