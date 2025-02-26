@@ -13,14 +13,22 @@ async function processWithGemini(command, uploadedFile, isFollowUp = false) {
     const prompt = `You are a helpful file conversion assistant. You have these supported formats: PDF, PNG, JPG/JPEG, and DOCX.
 
     ${isFollowUp ? 'This is a follow-up response to your previous question.' : 'A user has uploaded a file named "' + uploadedFile.filename + '"'}
-    
+
     The user's command is: "${command}"
     This is the name of user file - "${uploadedFile}"
-
+     
+    if (uploadedFile === "noFile.txt") {
+  respond with JSON:
+  {
+    "type": "clarification",
+    "message": "I don't see any file uploaded. Please upload a file that you'd like to convert."
+  }
+  return;
+}
     infer the file type from given file name i.e. is is pdf,png,docx,jpg, etc.
     Once you figure out the file type -- use it accordingly in your conversations.
     For example -- 1.While asking for which format to convert to , don't include the user file format in the options.
-   
+
     Don't use file name in your conversation, just use something like - your file, given file, uploaded file, etc.
 
     If the target format is clear, respond with JSON:
@@ -47,7 +55,7 @@ async function processWithGemini(command, uploadedFile, isFollowUp = false) {
     - "make it a png image" (format = png)
     - "transform into jpg" (format = jpg)
     - "to docx" (format = docx)
-    -"jpeg" (format = jpeg)
+    - "jpeg" (format = jpeg), "pdf"(format = pdf)..etc
 
     Please judge according to your own reasoning whether target format is mentioned or not.
     You don't need to know the original format of file for conversion.
@@ -55,15 +63,13 @@ async function processWithGemini(command, uploadedFile, isFollowUp = false) {
     For example -- if there is a typo --> respond accordingly with clearifying question like-
     "Did you mean pdf" for "convert file to ppf"
     If jibberish is return --> respond with humour.
-    
 
     You must not start conversion if target format is same as the format of the user's file.
 
     Keep more confidence on your own judgement what is target-format...stop asking clarifying 
     questions once you get to know the target format..just do the conversion then.
-    
-    Respond only in json string keep your reosoning to yourself..don't send it along with the JSON string.
-    `;
+
+    Respond only in json string keep your reosoning to yourself..don't send it along with the JSON string.`;
 
     
 

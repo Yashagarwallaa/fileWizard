@@ -59,8 +59,9 @@ const FileConverterApp = () => {
         const serverMessage = {
           type: 'bot',
           text: `${res.data.message}`,
-          fileName: res.data.filename
+          fileURL: res.data.signedURL
         };
+        console.log(serverMessage.fileURL);
         setMessages(prev => [...prev, serverMessage]);
         setFile(null);
         setOriginalFilename(null);
@@ -194,13 +195,15 @@ const MessageBubble = ({ message }) => {
       )}
       
       {message.text}
-      
-      {message.fileName && (
+      {message.fileURL && (
         <div style={styles.downloadButton}>
           <FileText size={20} style={{ marginRight: '10px' }} />
           <a 
-            href={`http://localhost:8080/download/${message.fileName}`}
+            href={`${message.fileURL}`}
             style={styles.downloadLink}
+            download
+            target='_blank'
+            rel='noopener noreferer'
           >
             Download Converted File
           </a>

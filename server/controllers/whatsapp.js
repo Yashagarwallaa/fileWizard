@@ -4,11 +4,11 @@ const path = require('path');
 const axios = require('axios');
 const FormData = require('form-data');
 const { processWithGemini } = require('../controllers/gemeniController.js');  // Your existing Gemini logic
-const { convertFile } = require('../controllers/converFile.js');  // Your existing conversion logic
+const {  convertFileGCStoGCS } = require('../controllers/converFile.js');  // Your existing conversion logic
 const {uploadToGCS} = require('../controllers/gcp_file_handling.js');
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken =   process.env.TWILIO_AUTH_TOKEN
-
+const bucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME;
 const client = twilio(
     accountSid,
    authToken
@@ -25,7 +25,7 @@ async function handleIncomingMessage(req, res) {
     const userNumber = req.body.From;
     const hasMedia = req.body.NumMedia > 0;
     const userMessage = req.body.Body;
-    console.log(userNumber);
+
     try {
         // Handle file upload
         if (hasMedia) {
@@ -33,12 +33,10 @@ async function handleIncomingMessage(req, res) {
             const contentType = req.body.MediaContentType0;
             const fileExtension = contentType.split('/')[1];
             const fileName = `${Date.now()}.${fileExtension}`;
-            const uploadDir = path.resolve(__dirname, '..', 'uploads'); // Moves one level up
-            const filePath = path.join(uploadDir, fileName);
-
+    
+           
          
-             console.log(mediaUrl, fileName, filePath);
-            // Download file from Twilio
+            // Downloading file from Twilio
             const response = await axios({
                 method: 'get',
                 url: mediaUrl,
@@ -48,17 +46,17 @@ async function handleIncomingMessage(req, res) {
                     password:authToken
                 }
             });
-
-            await new Promise((resolve, reject) => {
-                const writeStream = fs.createWriteStream(filePath);
-                response.data.pipe(writeStream);
-                writeStream.on('finish', resolve);
-                writeStream.on('error', reject);
-            });
+            const {uploadDestination,uploadURL} = await uploadToGCS(response.data.responseUrl,`uploads/${fileName}`);
+            // await new Promise((resolve, reject) => {
+            //     const writeStream = fs.createWriteStream(filePath);
+            //     response.data.pipe(writeStream);
+            //     writeStream.on('finish', resolve);
+            //     writeStream.on('error', reject);
+            // });
 
             // Store file info
             activeTransfers.set(userNumber, {
-                filePath,
+                uploadDestination,
                 fileName
             });
 
@@ -71,7 +69,6 @@ async function handleIncomingMessage(req, res) {
             result = result.replace(/^```json\n/, '')  
             result = result.slice(0,-4);
             result = JSON.parse(result);
-            console.log(result);
             twiml.message(result.message || "How would you like me to convert your file?");
         }
         // Handle conversion command
@@ -87,22 +84,15 @@ async function handleIncomingMessage(req, res) {
             result = result.replace(/^```json\n/, '')  
             result = result.slice(0,-4);
             result = JSON.parse(result);
-            console.log(result);
             if (result.type === 'conversion') {
                 // Perform conversion
-                        
-          
-                const outputFilename = `${Date.now()}.${result.targetFormat}`;
-                const convertDir = path.resolve(__dirname, '..', 'converted'); // Moves one level up
-                const outputPath = path.join(convertDir, outputFilename);
-            
+                // const convertDir = path.resolve(__dirname, '..', 'converted'); // Moves one level up
+                // const outputPath = path.join(convertDir, outputFilename);
 
-                await convertFile({
-                    target_format: result.targetFormat,
-                    source_file: fs.createReadStream(fileInfo.filePath)
-                }, outputPath);
-                const uploadFile = await uploadToTwilioMedia(outputPath,userNumber,outputFilename);
-                console.log("Generated Media URL:", uploadFile.twilioResponse);
+                const {res,signedUrl}= await convertFileGCStoGCS(`uploads/${fileInfo.fileName}`,result.targetFormat,'converted',null
+                );
+
+                const uploadFile = await uploadToTwilioMedia(userNumber,signedUrl);
                 
                 await client.messages.create({
                     from: `whatsapp:${WHATSAPP_NUMBER}`,
@@ -114,8 +104,7 @@ async function handleIncomingMessage(req, res) {
 
                 // Clean up
                 activeTransfers.delete(userNumber);
-                fs.unlinkSync(fileInfo.filePath);
-                fs.unlinkSync(outputPath);
+                
              
             } else {
                 // Send Gemini's clarification response
@@ -151,17 +140,16 @@ async function handleIncomingMessage(req, res) {
 }
 
 
-async function uploadToTwilioMedia(filePath, toNumber,outputFilename) {
+async function uploadToTwilioMedia(toNumber,signedUrl) {
     try {
       // First upload to GCS and get signed URL
    
-     const {signedUrl,destinationPath} =await uploadToGCS(filePath,outputFilename);
-  console.log(signedUrl);
+    //  const {signedUrl,destinationPath} =await uploadToGCS(filePath,outputFilename);
       // Create form data with all required fields
       const form = new FormData();
       form.append('To', `whatsapp:${toNumber.replace('whatsapp:', '')}`);
       form.append('From', `whatsapp:${process.env.WHATSAPP_NUMBER.replace('whatsapp:', '')}`);
-      form.append('Body', 'Media message');
+      form.append('Body', 'Converted File');
       form.append('MediaUrl', signedUrl);
   
       const response = await axios.post(
@@ -182,7 +170,6 @@ async function uploadToTwilioMedia(filePath, toNumber,outputFilename) {
   
       return {
         twilioResponse: response.data,
-        gcsPath: destinationPath
       };
     } catch (error) {
       console.error('Error uploading media:', error.response?.data || error.message);
