@@ -75,13 +75,15 @@ app.post("/process", upload.single("file"), async (req, res) => {
       });
     }
   } catch (err) {
-    console.error("❌ Server Error:", err);
+    console.error("Server Error:", err);
     res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
 app.post('/webhook', express.urlencoded({ extended: true }), handleIncomingMessage);
-
+app.get('/',(req,res)=>{
+  res.send('Welcome to FileWizard');
+})
 app.listen(process.env.PORT || 8000, () => {
-  console.log(`✅ Server running on PORT ${process.env.PORT || 8000}`);
+  console.log(` Server running on PORT ${process.env.PORT || 8000}`);
 });
