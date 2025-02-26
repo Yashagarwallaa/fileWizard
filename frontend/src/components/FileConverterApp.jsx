@@ -249,15 +249,15 @@ const WelcomeMessage = () => {
 // Styles object
 const styles = {
   container: {
-    fontFamily: 'Inter, sans-serif',
+    fontFamily: "'Lexend Deca', sans-serif",
     maxWidth: '600px',
-    margin: '0 auto',
+    margin: '2rem auto 0 auto',
     height: '90vh',
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: '#f4f4f7',
     borderRadius: '12px',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+boxShadow: '4px 6px 4px rgba(0, 0, 0, 1), 0 1px 2px rgba(255, 255, 255, 0.07)',
     overflow: 'hidden'
   },
   header: {
