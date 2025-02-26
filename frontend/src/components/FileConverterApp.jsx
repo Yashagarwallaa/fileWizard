@@ -230,7 +230,7 @@ const WelcomeMessage = () => {
     <div style={styles.welcomeMessage}>
       <div style={styles.welcomeHeader}>
         <Bot size={20} />
-        <span style={{ fontWeight: '500' }}>File Conversion Assistant</span>
+        <span style={{ fontWeight: '500' }}>FileWizard</span>
       </div>
       <p style={{ margin: '0 0 10px' }}>
         Hi! I'm your file conversion assistant. Upload a file and tell me how you'd like to convert it.
