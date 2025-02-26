@@ -235,6 +235,8 @@ const WelcomeMessage = () => {
       <p style={{ margin: '0 0 10px' }}>
         Hi! I'm your file conversion assistant. Upload a file and tell me how you'd like to convert it.
       </p>
+     <p style={{ margin: '0 0 10px',  fontWeight:'bold'}}>Upload max limit is 1 MB per file</p> 
+
       <p style={{ margin: '0 0 5px' }}>I support converting to:</p>
       <ul style={{ margin: '0', paddingLeft: '20px' }}>
         <li>PDF documents</li>
