@@ -3,6 +3,7 @@ import { useState } from 'react'
 import './App.css'
 import axios from 'axios';
 import FileConverterApp from './components/FileConverterApp';
+import { Analytics } from '@vercel/analytics/react';
 
 
 
@@ -47,6 +48,7 @@ function App() {
     
       </div> */}
       <FileConverterApp/>
+      <Analytics/>
     </>
   )
 }
